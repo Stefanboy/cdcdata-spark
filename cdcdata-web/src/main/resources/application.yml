@@ -1,0 +1,49 @@
+server:
+  port: 9999
+  servlet:
+    context-path: /cdcdata-web
+#激活dev
+spring:
+  profiles:
+    active: dev
+  #不用创建表 自动会创建
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true #把sql显示出来
+  datasource:
+    username: root
+    password: mysqladmin
+    url: jdbc:mysql://jd:3306/ruozedata_hive_test
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+
+---
+server:
+  port: 9998
+spring:
+  profiles: dev
+---
+server:
+  port: 9997
+spring:
+  profiles: prod
+
+---
+
+student:
+  id: 1
+  name: xiaoming
+  birthday: 1993/03/08
+  male: false
+  infos:
+    a: 英超
+    b: 利物浦
+  tachers:
+    - pk
+    - j
+  grade:
+    name: cdcdata
+    desc: data
+
+

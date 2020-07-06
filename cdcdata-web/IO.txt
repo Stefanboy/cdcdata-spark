@@ -1,0 +1,60 @@
+Java SE
+    IO(BIO/NIO/AIO) Thread Socket Collection
+    Netty
+
+IO
+    字节流
+        InputStream(字节流最顶层的输入抽象类)
+            实现Closeable接口：关闭流
+               Closeable  extends AutoCloseable：也是关闭
+        OutputStream(字节流最顶层的输出抽象类)
+            implements Closeable, Flushable
+            Closeable：关闭流
+            Flushable：举个栗子，不会来一个字节就直接输出字节，有好几个字节再输出
+
+    字符流
+        Reader(字符流最顶层的输入抽象类)
+            implements Readable, Closeable
+            Readable：可读才行
+            Closeable：关闭
+
+        Writer(字符流最顶层的输出抽象类)
+            implements Appendable, Closeable, Flushable
+            Appendable：表示追加的接口
+            Closeable：关闭
+            Flushable：举个栗子，不会来一个字符就直接输出字节，有好几个字节再输出
+          InputStreamReader：输入字节流转字符流 里面思想：装饰者设计模式
+          OutputStreamWriter：输出字节流转字符流 里面思想：装饰者设计模式
+
+Socket
+
+Server
+多个客户端去连接
+
+==> QQ群
+ 每个人发送一个信息，群里的”所有人“（在线的人）都应该能接收到
+
+Java BIO
+
+类似我们刚刚的CS的QQ群
+    Java BIO
+    每个Client说的话其他在线用户都能接收的到
+
+设计
+    服务端
+        框：能维护所有在线用户
+            serverSocket.accept 框加一个用户
+            socket.close()  框移除这个用户
+            Map<Integer,Writer>
+                key: socket的port
+                writer：把消息转发给其他在线用户
+        线程：Handler implements Runnable
+            每接收到一个socket，就创建一个线程去处理该socket的通信
+    客户端
+        可以在控制台上输入信息，发送给服务端
+        不仅仅能说话，而且还能够接收到其他用户发送的信息
+        两个线程
+            一个是说话的
+            另外一个是用来接收其他用户发送过来的信息（展示在控制台上）
+
+

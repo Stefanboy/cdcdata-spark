@@ -1,0 +1,22 @@
+server:
+  port: 9527
+  servlet:
+    context-path: /platform
+spring:
+  datasource:
+    username: root
+    password: mysqladmin
+    url: jdbc:mysql://jd:3306/cdcdata_platform
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true #把sql显示出来
+
+cdcdata:
+  hadoop:
+    nn:
+      uri: jd:50070
+    rm:
+      uri: jd:38088
