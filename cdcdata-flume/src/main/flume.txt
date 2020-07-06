@@ -1,0 +1,185 @@
+flume自定义开发：http://flume.apache.org/releases/content/1.9.0/FlumeDeveloperGuide.html
+    从MySQL作为数据源的 不用从头到尾自己写 建议直接Google GitHub找 搬砖
+    现成的从sql读的实现：https://github.com/keedio/flume-ng-sql-source
+
+自定义Source
+    文章：http://flume.apache.org/releases/content/1.9.0/FlumeDeveloperGuide.html#source
+    参考样例开发
+    在数据源里直接产生数据，产生的数据你可以定制化(前缀、后缀)
+
+vi custom_source.conf
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+a1.sources.r1.type = com.cdc.spark.flume.CdcdataSource
+a1.sources.r1.suffix = -JUMP
+
+a1.channels.c1.type = memory
+
+a1.sinks.k1.type = logger
+
+a1.sinks.k1.channel = c1
+a1.sources.r1.channels = c1
+
+将开发完成打的jar上传到flume的lib目录下
+启动
+flume-ng agent \
+--name a2 \
+--conf $FLUME_HOME/conf
+--conf-file /home/hadoop/script/flume/custom_source.conf
+-Dflume.root.logger=INFO,console
+
+
+自定义Sink
+    从Channel拿到数据(Event),把数据输出到我们自定义Sink中去
+    需求：nc source ==> memory channel ==> cdcdatasink
+
+删除自定义包 然后重新上传
+
+vi custom_sink.conf
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = jd
+a1.sources.r1.port = 44444
+
+a1.channels.c1.type = memory
+
+a1.sinks.k1.type = com.cdc.spark.flume.CdcdataSink
+a1.sinks.k1.prefix = cdc:
+a1.sinks.k1.suffix = -JUMP
+
+a1.sinks.k1.channel = c1
+a1.sources.r1.channels = c1
+
+启动
+flume-ng agent \
+--name a2 \
+--conf $FLUME_HOME/conf
+--conf-file /home/hadoop/script/flume/custom_sink.conf
+-Dflume.root.logger=INFO,console
+
+telnet jd 44444
+运行后发现输出的数据后缀跑到前面去了 课后思考为什么数据不对？
+
+
+事物
+    看源码 Transaction接口里面有四个抽象方法
+    找具体的实现类
+    MemoryChannel
+    source把数据推送到channel的过程 会有事物 过程如下
+      第64 takeList
+      65行 putList(source到channel)
+      source-channel中间会有事物 走的是78行的doPut方法 把数据先写入putList中去
+      117行doCommit方法 检查channel queue的容量是否还够用
+      162行doRollback方法 如果queue空间不够，event回滚
+
+    sink拉取channel的过程
+      92行的doTake方法：拉取数据到takeList(缓冲区)
+      117行doCommit方法：如果成功，event从takeList(缓冲区)移除
+      162行doRollback方法：如果出现异常，将takeList中的数据归还到channel的queue中去
+
+  拦截器(Interceptor)：不符合规则的可以干掉或单独拉出来
+    flume接进来的数据都在一起的，有些业务线比较重要的，单独拉出来
+    需求 包含字段gifshow的单独写出 其他业务单独写出
+    nc ==> interceptor ==> channel selector
+                           ==> gifshow ==>avro-sink==>logger
+                           ==> other ==>avro-sink==>logger
+    分析：需要3个Agent
+    第一个Agent选型
+      nc ==> Multiplexing==>memory==>avro-sink(jd/44445)
+                            memory==>avro-sink(jd/44446)
+
+    第2,3个的选型
+        avro-source==>memory==>logger
+    由于所有的日志进来没有header信息，所以需要自定义一个拦截器，把我们所需要的header放进去
+
+vi flume01.conf
+
+a1.sources = r1
+a1.sinks = k1 k2
+a1.channels = c1 c2
+
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = jd
+a1.sources.r1.port = 44444
+
+a1.sources.r1.interceptors = i1
+a1.sources.r1.interceptors.i1.type = com.cdc.spark.flume.CdcdataInterceptor$Builder
+a1.sources.r1.selector.type = multiplexing
+a1.sources.r1.selector.header = type
+a1.sources.r1.selector.mapping.gifshow = c1
+a1.sources.r1.selector.mapping.other = c2
+
+a1.channels.c1.type = memory
+a2.channels.c2.type = memory
+
+a1.sinks.k1.type = avro
+a1.sinks.k1.hostname = jd
+a1.sinks.k1.port = 44445
+
+a1.sinks.k1.type = avro
+a1.sinks.k1.hostname = jd
+a1.sinks.k1.port = 44446
+
+a1.sources.r1.channels = c1 c2
+a1.sinks.k1.channel = c1
+a1.sinks.k2.channel = c2
+
+vi flume02.conf
+
+a2.sources = r1
+a2.sinks = k1
+a2.channels = c1
+
+a2.sources.r1.type = avro
+a2.sources.r1.bind = jd
+a2.sources.r1.port = 44445
+
+a2.channels.c1.type = memory
+
+a2.sinks.k1.type = logger
+
+a2.sources.r1.channels = c1
+a2.sinks.k1.channel = c1
+
+
+vi flume03.conf
+
+a3.sources = r1
+a3.sinks = k1
+a3.channels = c1
+
+a3.sources.r1.type = avro
+a3.sources.r1.bind = jd
+a3.sources.r1.port = 44446
+
+a3.channels.c1.type = memory
+
+a3.sinks.k1.type = logger
+
+a3.sources.r1.channels = c1
+a3.sinks.k1.channel = c1
+
+启动
+flume-ng agent \
+--name a3 \
+--conf $FLUME_HOME/conf
+--conf-file /home/hadoop/script/flume/interceptor/flume03.conf \
+-Dflume.root.logger=INFO,console
+
+flume-ng agent \
+--name a2 \
+--conf $FLUME_HOME/conf
+--conf-file /home/hadoop/script/flume/interceptor/flume02.conf \
+-Dflume.root.logger=INFO,console
+
+
+flume-ng agent \
+--name a1 \
+--conf $FLUME_HOME/conf
+--conf-file /home/hadoop/script/flume/interceptor/flume01.conf \
+-Dflume.root.logger=INFO,console
