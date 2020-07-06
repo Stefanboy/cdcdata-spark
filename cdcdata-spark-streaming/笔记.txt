@@ -1,0 +1,107 @@
+文章：http://spark.apache.org/docs/latest/streaming-kafka-integration.html
+0.8版本kafka：http://spark.apache.org/docs/latest/streaming-kafka-0-8-integration.html
+    Receivers方式读取kafka数据：
+    Direct方式是1.3之后出现的
+
+Receivers：
+    存储方式：MEMORY_AND_DISK_SER_2
+    缺点：
+      1、数据丢失
+      2、开启WAL造成数据延迟
+    优点
+      1、offset我们不用关心
+    这种模式：Topic partitions跟rdd的partition没有关系
+             开启wal机制后 应修改为StorageLevel.MEMORY_AND_DISK_SER
+
+1.0版本：http://spark.apache.org/docs/latest/streaming-kafka-0-10-integration.html
+Direct
+    不需要Receiver
+    Topic的partition和rdd的partition是1:1
+    自己手动维护offset
+
+服务器运行命令 不会用咋办 在官网找：
+
+./spark-submit \
+--class com.cdcdata.spark.streaming.kafka.StreamingKafkaYARNApp \
+--master local[2] \
+--name StreamingKafkaYARNApp \
+--jars xxxkafka.jar,kafka-clients-2.0.0.jar \
+home/hadoop/lib/cdcdata-spark-streaming.jar \
+jd:9092,jd:9093,jd:9094 ccdcdata_group cdcdata3partstopic
+
+
+瘦包：不包含依赖
+胖包：包含依赖包
+  打胖包：使用maven的assembly插件完成胖包的打包
+  注意：像不需要的或者集群里有的包 比如hadoop或者streaming 在pom中加个sqoop的provide标签
+一般是将包
+
+窗口函数 Window操作
+    每隔5s统计前10s的数据等等
+https://spark.apache.org/docs/latest/streaming-programming-guide.html#window-operations
+    搜Window Operations
+
+消费语义:Fault-tolerance Semantics
+    At most once:
+      每条记录处理最多一次 数据可能有丢失
+
+    At least once:每条记录处理最少一次 数据不会丢失 可能有重复
+    Exactly once:每条数据仅被处理一次 数据不会丢失 也不会被处理多次
+
+Semantics of output operations
+  Output operations (like foreachRDD) have at-least once semantics
+  foreachRDD:能保证at-least 借助一些其他的 做到精准一次 看文章
+调优:Performance Tuning
+    看ui-->streaming
+    Input Rate:数据的输入速率
+    Scheduling Delay:每个批次启动任务调度的延迟
+    Processing Time:每个批次处理花费了多少时间
+    Total Delay:总延迟 调度延迟+处理时间
+
+    ==>最佳实践
+    在下一个批次启动任务之前,一定要运行完前一批次的数据
+    合理的batch time:是根据需求来定
+    影响任务运行时长的要素
+      1）数据规模
+      2）batch time
+      3）业务复杂度
+    Kafka限速：https://spark.apache.org/docs/latest/configuration.html
+      搜 kafka
+      "spark.streaming.kafka.maxRatePerPartition","10" 每个分区的最大消费数
+
+      在ui看到的是每批消费300
+      怎么算出来的呢:
+        5s一个批次 topic是3的话 每批消费数据=5s*3*10=150
+        5s一个批次 topic是1的话 每批消费数据=5s*1*10=50
+
+    背压:backpressure 1.5版本引入的
+      可以在运行时根据前一个批次数据的运行情况，动态调整后续批次读入的数据量
+      spark.streaming.backpressure.enabled
+
+      spark.streaming.backpressure.initialRate该参数对于Direct模式是否适用？
+      如果适用那挺好
+      如果不适用怎么办
+
+      spark.streaming.stopGracefullyOnShutdown 优雅的关闭jvm
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

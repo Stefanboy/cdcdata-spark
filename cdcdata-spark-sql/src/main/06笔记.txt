@@ -1,0 +1,65 @@
+spark窗口函数：https://databricks.com/blog/2015/07/15/introducing-window-functions-in-spark-sql.html
+https://jaceklaskowski.gitbooks.io/mastering-spark-sql/spark-sql-functions-windows.html
+spark.read.format("json").load(path)
+						.option("path","...").load()
+
+像Hive存储parqet或者orc无法直接存储 还得转一下 但是Spark的外部数据源会使这一切的读写都很简单
+对json格式参数的设置 看源码 在org.apache.spark.sql.execution.datasources.json的JsonDataSource下找到95行JSONOptions点进去
+  第72行有个参数key为 mode ，点进fromString中第56行 默认的值为PERMISSIVE，如果数据格式不对，设置删掉该条数据，需要设置key为mode，值为DROPMALFORMED，在源码52行；如果数据不对想要报错，设置FAILFAST，第53行
+    {"a":1,"b":2,"c":3}
+    {"a":4,:5,"c":6}
+    {"a":7,"b":8,"c":9}
+
+使用spark不需要安装hive 只需要hive-site配置文件即可 只需要连接到元数据信息就行
+udf
+
+udaf
+    聚合函数：多进一出  udaf
+    分组求和
+    name,age,sex
+    select sex,sum(age) from xxx group by sex;
+
+udtf 一进多出
+
+内置数据源有限，我们可以自定义数据源 比如读一个text文本 我们之前是一个字段一个字段的解析，很麻烦 如果直接能转成df的格式多好
+  举个栗子：
+id 姓名 性别 工资 奖金
+1,pp,1,10000,3000
+2,cc,1,6000,1000
+3,jj,1,8000,2000
+4,三木,2,6000,1000
+5,旅长,3,6000,1000
+
+extds
+external data source
+
+filter
+	像text格式的数据一定是全部加载进来 然后再进行filter
+
+ORC/Parquet 智能型的
+
+load==>orc/parquet+compression
+
+
+
+解析逻辑执行计划->与底层元数据关联 看是sql否写的对和转换与元数据关联的逻辑执行计划 ->优化逻辑执行计划->物理执行计划->提交到spark上去执行
+    select后面的东西就是project
+    在spark-sql命令行创建表 然后查看执行计划
+    create table sqltest(key string, value string)
+
+    explain extended
+    select a.key*(3 * 5),b.value from sqltest a join sqltest b
+    on a.key=b.key and a.key>3;
+
+sql ==> SQL解析规则
+	SparkSQL到底支持哪些规则呢？ 如果功能无法支持业务 在SqlBase.g4文件里自己加
+	规则文件在E:\bigdata\workSpace\spark\sql\catalyst\src\main\antlr4\org\apache\spark\sql\catalyst\parser
+	就是下载的源码下找SqlBase.g4
+    比如支持的statement 在73行 比如支持的bucketSpec 在231行 skewSpec在237行
+
+
+SqlBase.g4
+
+spark245导入idea，要编译通过
+找到spark-sql的入口点
+idea里面debug下spark-sql的流程

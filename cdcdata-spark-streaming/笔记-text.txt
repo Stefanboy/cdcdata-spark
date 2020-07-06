@@ -1,0 +1,93 @@
+1.kafka分区策略
+https://github.com/apache/kafka/blob/6cfed8ad0061cdb2c71df03001cbd485491d6dfa/clients/src/main/java/org/apache/kafka/clients/producer/internals/DefaultPartitioner.java
+https://github.com/apache/kafka/blob/88087e91dd4eed1ee3c3e12961db84b7b56c34a0/clients/src/main/java/org/apache/kafka/clients/producer/internals/StickyPartitionCache.java
+如果key没有值，采用stickyPartitionCache.partition(topic, cluster);
+如果key有值，采用(hash取模)Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
+
+2.调优
+Producer:
+    acks: all
+    buffer.memory: 536870912
+    compression.type :snappy
+    retries: 100
+    max.in.flight.requests.per.connection = 1
+
+    batch.size: 10240字节 不是条数
+    max.request.size = 2097152
+    request.timeout.ms = 360000    大于 replica.lag.time.max.ms
+    metadata.fetch.timeout.ms= 360000
+    timeout.ms = 360000
+
+    linger.ms 5s (生产不用)
+    max.block.ms 1800000
+
+
+Broker: CDH
+    message.max.bytes 2560KB  1条消息的大小
+    zookeeper.session.timeout.ms 180000
+    replica.fetch.max.bytes 5M   大于message.max.bytes
+    num.replica.fetchers 6
+    replica.lag.max.messages 6000
+    replica.lag.time.max.ms 15000
+
+    log.flush.interval.messages 10000
+    log.flush.interval.ms 5s
+
+
+Consumer:
+https://issues.apache.org/jira/browse/SPARK-22968
+    , "max.partition.fetch.bytes" -> (5242880: java.lang.Integer) //default: 1048576
+    , "request.timeout.ms" -> (90000: java.lang.Integer) //default: 60000
+    , "session.timeout.ms" -> (60000: java.lang.Integer) //default: 30000
+    , "heartbeat.interval.ms" -> (5000: java.lang.Integer)
+    , "receive.buffer.bytes" -> (10485760: java.lang.Integer)
+
+
+3.监控  CDH
+蓝色  receive  生产者 比如flume到kafka的数据
+绿色  fetch    消费者
+
+看图：
+1.写和读趋势是否一样
+ 一样
+2.写和读趋势假如是一样，同一个时间点 为什么读的曲线 比 写的高？
+写: value：1 J哥 18
+读: 读取的信息 topic partition offset time key  value
+
+3.这幅图充分说明了什么？
+kafka抗的住压力，消费及时，消息没有堆积
+
+
+4.故障案例二
+4.1 kafka磁盘目录撑爆  kafka起不来，zk的文件EOF错误
+解决:
+删除 /var/lib/zookeeper/version-2文件夹
+创建version-2文件夹  修改用户用户组 zookeeper
+启动
+
+预警很重要
+
+
+4.2 断电  园区
+
+现象: kafka进程是绿色 ok 但是生产者 消费者 无法ok 抛exception
+    kafka.common.notAssigndReplicaException
+当时:
+	服务down  rm删除kafka数据目录
+	zk的kafka元数据清空
+	重新装kafka 建topic
+
+	重新刷  如果断电时间是礼拜六上午10点 --》
+	那我就刷礼拜六凌晨的数据 大概的
+如何重刷
+	找到mysql的binlog文件 在/usr/local/mysql/arch文件夹下 使用ll命令 看时间 然后重刷binlog文件
+
+	基于hbase的upsert语法 无需关心重复数据 是幂等性
+
+
+总结：
+基于kafka的平台，在我司是经典架构：Flume/maxwell/ogg/-->kafka-->ss/sss/flink
+其中kafka是作为消息中间件，提供实时写读的特性
+面对上游的高峰业务数据，能够起到有效的缓冲，避免下游的数据同步job 和 指标计算job的压力井喷，导致夯住 假死状态！
+
+有句话： 要稳稳的消费（利用反压机制）
