@@ -30,7 +30,7 @@
         <hadoop.version>2.6.0-cdh5.16.2</hadoop.version>
         <scala.tools.verson>2.12</scala.tools.verson>
         <spark.version>2.4.5</spark.version>
-        <mysql.version>5.1.28</mysql.version>
+        <mysql.version>8.0.16</mysql.version>
         <scalikejdbc.version>2.5.2</scalikejdbc.version>
         <presto.version>0.233.1</presto.version>
         <flume.version>1.6.0-cdh5.16.2</flume.version>
