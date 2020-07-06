@@ -1,0 +1,130 @@
+NameNode
+    NameNode职责是什么？
+    NN启动过程中做了那些事情
+
+hadoop-daemon.sh脚本(看脚本捡重点看)
+流程
+    hadoop-daemon.sh start namenode
+    ==>hdfs
+        ==> 入口类CLASS='org.apache.hadoop.hdfs.server.namenode.NameNode
+
+    一进入就看到启动脚本的命令
+    usage="Usage: hadoop-daemon.sh [--config <conf-dir>] [--hosts hostlistfile] [--script script] (start|stop) <hadoop-command> <args...>"
+
+    然后看着一行
+    case $command in
+      namenode|secondarynamenode|datanode|journalnode|dfs|dfsadmin|fsck|balancer|zkfc)
+      看到无论如何都会进入到bin/hdfs下
+      if [ -z "$HADOOP_HDFS_HOME" ]; then
+          hdfsScript="$HADOOP_PREFIX"/bin/hdfs
+        else
+          hdfsScript="$HADOOP_HDFS_HOME"/bin/hdfs
+        fi
+    [hadoop@JD sbin]$ cd ../bin
+    查看 hdfs文件 找到
+    if [ "$COMMAND" = "namenode" ] ; then
+      CLASS='org.apache.hadoop.hdfs.server.namenode.NameNode'
+      # Set SENTRY_HOME if possible and add Sentry plugin jars to classpath
+      if [[ -z "$SENTRY_HOME" ]]
+
+idea中全局搜NameNode进入该类 然后仔细看该核心类的注释 很重要
+
+    1)  filename->blocksequence (namespace)
+        文件到block的映射 比如文件切成几块
+    2)  block->machinelist ("inodes")
+        block到dn的映射 block在那些dn上
+
+    维护了命名空间的东西，包括文件的大小、名称、文件元数据信息(block 在哪里) 同时还会对外提供RPC请求和Http的服务
+
+    NameNode
+        处理外部的远程调用、HttpServer 像ui界面的东西 都是通过http请求回来的
+    FSNamesystem
+        执行文件管理系统
+    NameNode server
+        RPC请求相关 比如mkdir/ls/put等命令就是通过RPC请求
+
+      NameNode namenode = createNameNode(argv, null);
+      if (namenode != null) {
+        namenode.join();
+      }
+      createNameNode{
+        StartupOption startOpt = parseArguments(argv);
+        switch(startOpt) {
+          default: {
+            new NameNode(conf);
+                成员变量赋值
+                initialize(conf);{
+                    启动服务
+                    startHttpServer(conf);{
+                        绑定一堆servlet服务
+                        setupServlets(httpServer, conf);
+                        启动
+                        httpServer.start();
+                    }
+                    加载元数据信息
+                    loadNamesystem(conf);
+                    创建rpcServer
+                    rpcServer = createRpcServer(conf);
+                    startCommonServices(conf);
+
+
+          }
+        }
+      }
+
+NameNode核心成员变量
+	FSNamesystem namesystem; 用来管理员数据
+	Configuration conf;配置信息
+	NamenodeRole role;NamenodeRole 角色
+	HAState state;HA的状态
+	boolean haEnabled;是否开启HA
+	HAContext haContext;HA的上下文
+	NameNodeHttpServer httpServer;ui通过http请求到的一系列数据就是是请求的NameNodeHttpServer
+	NameNodeRpcServer rpcServer;各种请求通过rpc来完成
+
+startHttpServer(启动httpserver)
+    实现方式：	Spring Boot
+                Servlet
+                Jetty
+                HttpServer: http://localhost:9527/test
+                0.0.0.0:50070
+
+
+看完注释后 找到核心main方法
+    ctrl+o找到1608的main方法 点击1609的parseHelpArgument方法 这里面主要是解析了hive的一些参数 是通过1593的PosixParser来进行解析 点进去看到是继承Parser
+      该类有一些实现，在hadoop了解下就可以，spark会细讲
+      再回到NameNode的1609行 其实就是解析参数，不行的话就退出；1614行的startupShutdownMessage点进去，其实就是打印一些启动参数，
+    最重要的一个方法是1615行的createNameNode方法，该方法就是创建namenode；点进去进入到1470的createNameNode方法，会传入conf和conf
+      1473行，如果没有conf，就创建一个，做的事是加载配置文件；1479行parseArguments解析参数变为startOpt，
+      可以看一下；重要的来了 1484行  setStartupOption(conf, startOpt);设置参数 1486行有一个switch，会拿到startOpt，如果是FORMAT 会进行格式化
+      1545行有一个default 啥参数都没有，返回new NameNode(conf); 点击NameNode方法进去，其实调用NameNode的构造 823行NamenodeRole表示namenode的角色
+      然后又调826行的构造为成员变量做初始化 到844行initialize(conf);初始化了一个
+    既然成员变量初始化 我们就要看一下成员变量有哪些 NameNode.java第312行开始
+    然后回到main方法 一路点进去 点到835行setClientNamenodeAddress(conf);点进去 可以看到拿到了配置文件里设置的值
+    下面几行也是获取到配置的内容，重新点进去这是初始化namenode initialize(conf);到673行启动startHttpServer(conf); 676行加载元数据信息loadNamesystem(conf);
+    678创建rpcserver rpcServer = createRpcServer(conf); 692创建一系列服务 startCommonServices(conf);
+
+    NameNodeHttpServer类
+    先去看673行startHttpServer(conf); 点进去779行看到NameNodeHttpServer 第三个参数表示在那台机器的端口上启动，这个参数是怎么拿到的呢，点击getHttpServerBindAddress进去看到595行getHttpServerAddress点进去，
+    一直点进去，看到610行的getHttpAddress方法，下面是根据key拿到值，点进去就可以看到值是什么0.0.0.0:50070,所以595行getHttpServerAddress就是拿到地址
+    再返回779行看到NameNodeHttpServer看看启动的时候做了什么事，点击779行的httpServer.start(); 进入105行的start方法，106行是拿到http协议，107行拿到host信息等等，125行是启动HttpServer，141行  initWebHdfs(conf);设置web参数
+    145行setupServlets(httpServer, conf);绑定一堆servlet，点进去可以看一下
+    146行httpServer.start();启动
+
+梳理过程
+    进入NameNode的main方法 1609行：解析参数是否合法，命令是否敲错，1614行，启动或销毁过程中打印日志信息；关键1615行创建nn点进去方法1470行，把命令行参数解析出来，1484行吧参数封装到setStartupOption(conf, startOpt)里面，
+    1487行如果是FORMAT 执行里面的操作 启动没有参数，所以匹配到1545行的default最终创建nn，在826行首先对成员变量进行赋值，然后844行initialize进行初始化，在初始化里点进去673行startHttpServer(conf)启动一个server，在server过程中
+    点进去780行start()方法，进入 NameNodeHttpServer类，里面125行先创建一个HttpServer2的东西，设置一些变量，然后再绑定上一系列的服务，然后回到NameNode.java中676行loadNamesystem(conf);加载元数据信息，这样ui页面请求后上才能够获得数据
+
+
+
+
+
+
+
+
+
+
+
+
+
