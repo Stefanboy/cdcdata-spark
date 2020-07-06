@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>cdcdata-spark</artifactId>
+        <groupId>com.cdcdata.spark</groupId>
+        <version>1.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>cdcdata-spark-core</artifactId>
+    <packaging>jar</packaging>
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_${scala.tools.verson}</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-launcher_${scala.tools.verson}</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cdcdata.spark</groupId>
+            <artifactId>cdcdata-spark-utils</artifactId>
+            <version>1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.scalikejdbc</groupId>
+            <artifactId>scalikejdbc_${scala.tools.verson}</artifactId>
+            <version>${scalikejdbc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scalikejdbc</groupId>
+            <artifactId>scalikejdbc-config_${scala.tools.verson}</artifactId>
+            <version>${scalikejdbc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <version>1.0.20</version>
+        </dependency>
+    </dependencies>
+
+
+
+
+</project>

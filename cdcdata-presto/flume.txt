@@ -1,0 +1,8 @@
+flume自定义开发：http://flume.apache.org/releases/content/1.9.0/FlumeDeveloperGuide.html
+    从MySQL作为数据源的 不用从头到尾自己写 建议直接Google GitHub找 搬砖
+    现成的从sql读的实现：https://github.com/keedio/flume-ng-sql-source
+
+自定义Source
+    文章：http://flume.apache.org/releases/content/1.9.0/FlumeDeveloperGuide.html#source
+    参考样例开发
+    在数据源里直接产生数据，产生的数据你可以定制化(前缀、后缀)

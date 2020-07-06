@@ -1,0 +1,83 @@
+文章：http://spark.apache.org/docs/latest/sql-programming-guide.html
+
+SQL on Hadoop 学习成本低 迁移不会影响太大
+	RDBMS
+	云化
+
+	Hive
+	Spark Core
+		Scala/Java/Python
+
+	存储 分析引擎 的变化不要会上层的应用产生直接的影响
+
+
+
+SQL on Hadoop框架
+	Hive
+		MetaStore
+		MR/Spark/Tez
+	Impala  <= 吃内存的老虎 特别耗内存 底层对Parquet支持好
+		Cloudera
+		Parquet
+	Presto  京东、美团用的多
+	Shark
+		SQL跑Spark之上
+		废弃
+			Spark SQL: Spark里面的一个子模块
+				优化...
+			Hive on Spark：Hive里面的
+				语法支持的很多的
+
+
+
+	Drill
+	Phoenix
+
+
+误区：
+1）Spark SQL不仅仅只能处理SQL
+2）Hive on Spark vs  Spark SQL
+3）Spark SQL is Apache Spark's module for working with structured data.
+
+强调的是“结构化数据”，而不是“SQL”
+Spark SQL支持SQL、DataFrame、Dataset
+支持多种不同数据源的数据 不同数据源的数据也能直接join
+
+Spark SQL is not about SQL
+Spark SQL is about more than SQL
+
+SchemaRDD DataFrame Dataset
+    Dataset：分布式数据集，1.6版本出来的，是个强类型，能够使用lambda表达式，能使用rdd算子
+      python不支持Dataset
+    DataFrame：是一个DataFrame，会组织成带名字的列，
+      DataFrame DF 等同于关系型数据库中的一张表，底层做了很多优化，
+      RDD可以和DataFrame进行转换
+    organized into named columns
+    如下所示
+
+    id name age
+    1   pk   30
+    2   xx   60
+
+SparkSession文章地址：http://spark.apache.org/docs/latest/sql-getting-started.html
+    Starting Point: SparkSession
+
+
+
+Scala： DF = Dataset[Row]
+
+--files/--jars   能否清空掉
+改Spark源码  Core SparkSQL
+
+RDD中的cache是lazy的
+Spark SQL中的cache是eager的
+
+
+
+
+Hive on Sark文章：https://cwiki.apache.org/confluence/display/Hive/Hive+on+Spark
+    如果想在Hive上跑Spark ： set hive.execution.engine=spark
+
+
+
+

@@ -1,0 +1,147 @@
+Presto: https://prestodb.io/
+    SQL on Hadoop
+    分布式SQL引擎，可以用来做交互式分析，支持的数量可以从GB到PB,可以跨数据源进行访问
+解析SQL,不是MySQL的替代品
+
+coordinator & workers
+
+服务器端安装
+    https://repo1.maven.org/maven2/com/facebook/presto/presto-server/
+    presto-server-0.233.1
+    解压
+    软件的根目录下创建etc文件夹
+    在etc目录下
+      配置node.properties
+    vi node.properties
+      node.environment=cdcdataproduction
+      node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
+      node.data-dir=/home/hadoop/tmp/presto/data
+
+    vi jvm.config
+      -server
+      -Xmx16G
+      -XX:+UseG1GC
+      -XX:G1HeapRegionSize=32M
+      -XX:+UseGCOverheadLimit
+      -XX:+ExplicitGCInvokesConcurrent
+      -XX:+HeapDumpOnOutOfMemoryError
+      -XX:+ExitOnOutOfMemoryError
+
+    vi config.properties
+      coordinator=true
+      node-scheduler.include-coordinator=true
+      http-server.http.port=8780
+      query.max-memory=2GB
+      query.max-memory-per-node=512M
+      discovery-server.enabled=true
+      discovery.uri=http://jd:8780
+    vi log.properties
+      com.facebook.presto=INFO
+    启动
+      bin/launcher start
+
+客户端安装
+    https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/
+    下载 presto-cli-0.233.1-executable.jar
+    然后放到 $presto_home/bin
+    然后mv presto-cli-0.233.1-executable.jar presto
+    赋执行权限
+    chmod +x presto
+    启动
+    ./presto --server jd:8780 --catalog hive --schema default
+
+连接mysql https://prestodb.io/docs/current/connector/mysql.html
+
+    cd catalog
+    vi mysql.properties
+
+      connector.name=mysql
+      connection-url=jdbc:mysql://jd:3306?haracterEncoding=utf8&amp;useSSL=false
+      connection-user=root
+      connection-password=mysqladmin
+    连接mysql
+      ./presto --server jd:8780 --catalog mysql
+
+    查询schema
+    SHOW SCHEMAS FROM mysql;
+    查看表信息
+    SHOW TABLES FROM mysql
+    查看表
+    DESCRIBE mysql.range.x_user;
+    查询数据
+    SELECT * FROM mysql.range.x_user;
+    插入数据
+    insert into mysql.range.x_user values(111,'ccdcdata','beijing')
+
+连接Hive
+    cd catalog
+    vi hive.properties
+
+    connector.name=hive-hadoop2
+    hive.metastore.uri=thrift://jd:9083
+    hive.config.resources=/home/hadoop/app/hadoop-2.6.0-cdh5.16.2/etc/hadoop/conf/core-site.xml,/home/hadoop/app/hadoop-2.6.0-cdh5.16.2/etc/hadoop/conf/hdfs-site.xml
+    启动
+    ./presto --server jd:8780 --catalog hive
+
+    show tables from xxx;
+    desc xxx.emp;
+    select * from xxx.emp;
+
+直接启动
+    ./presto --server jd:8780
+    这样的话 查询数据库必须带上hive.xxx.xxx 或者 mysql.xxx.xxx
+不同数据源join
+    select e.ename,e.deptno,d.xxx from hive.ruozedata_hive.emp e join mysql.deptno d e.deptno=d.deptno
+
+JDBC Driver
+    通过代码连接
+    new module->maven->com.cdcdata-presto
+    在主工程里面加入依赖
+    <dependency>
+        <groupId>com.facebook.presto</groupId>
+        <artifactId>presto-jdbc</artifactId>
+        <version>0.233.1</version>
+    </dependency>
+
+    建包com.cdcdata.presto.jdbc PrestoJDBCApp
+
+Presto UDF函数的开发
+    Hive/Spark SQL以及类似的SQL的框架都有内置函数
+    但是内置函数是不一定够用的
+    在我们的业务处理过程中，肯定会有自定义函数的开发（UDF函数）
+  三大类
+    scalar
+    aggregation聚合
+    window分析型
+
+  scalar自定义函数 加注解
+    @ScalaFunction 修饰的就是一个普通的Java中的static方法
+    @Descripton 描述函数的
+    @SqlType标记函数的返回值类型
+
+    搞完后打包传到服务器
+    进入plugin目录 创建cdcdata-udf文件夹 把打的包传入
+    然后重新启动
+    进入bin目录 bin/launcher run
+    发现报错 缺少guava的包 传入到cdcdata-udf目录下
+
+    然后在bin目录下启动client 连接到服务
+    ./presto --server jd:8780 --catalog hive
+    use ruozedata_hive; 切库
+    show functions 找到cdcdata开头的
+    调用 select ename,cdcdata_prefix(ename) from emp;
+
+  aggregation聚合自定义函数的开发
+    input(state,data)：进来一个data就拼接到state上去 这是单节点的操作
+    combine(state1,state2)：每个节点的state进行累加拼接 多节点的state聚合
+    output(final,out)：将最终的state写出去
+
+调优：https://prestodb.io/docs/current/connector/hive.html
+    对接hive情况最多
+    里面很多语法可能不太一样  比如建表语法 自己去看一下
+    https://www.ucloud.cn/yun/32213.html
+
+
+
+
+
