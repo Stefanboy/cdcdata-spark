@@ -1,0 +1,61 @@
+Topic: Spark对接HBase的数据
+
+
+如果访问hbase数据：cf:column
+	o:name 30
+	o:age pk
+	o:sex m
+
+在spark中操作
+select name,age,sex from xxx
+
+mapping
+
+想使用Spark EXT去访问HBase：
+	phoenix 适用于单表 像group by join这种不适合
+
+
+val df = spark.read.format("com.ruozedata.spark.source.hbase")
+.option("hbase.table.name","users")
+.option("spark.table.schema","(age int, name string, sex string)")
+.load()
+
+解决hbase跟spark冲突
+
+sparksql做了哪些优化
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

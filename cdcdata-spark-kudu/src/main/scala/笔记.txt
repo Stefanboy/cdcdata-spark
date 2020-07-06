@@ -1,0 +1,133 @@
+Spark离线综合(该项目无关业务 主要是使用spark进行统一读入和写出以及常见调优)
+	项目选型 q
+	HDFS ==> Hive/Spark/Flink ==> dst
+	如何做到使用Spark进行统一读写操作
+	会使用到 Kudu Delta HBase(使用spark读写hbase)
+
+主要目的是只修改方法里的read和write 中间的业务逻辑一点都不需要动
+
+地址：
+    https://kudu.apache.org
+rpm包下载地址：
+    http://archive.cloudera.com/cdh5/redhat/7/x86_64/cdh/5.16.2/RPMS/x86_64/
+架构流程
+    原来架构 flume采集数据->hdfs数据清洗->hdfs(应该会以hive表的形式存在)
+    但是呢 hdfs有一个非常致命的缺点 就是修改一条数据太费劲了  所以有可能hdfs清洗完的数据直接存到hbase中
+    但是hbase又有缺点 就是不支持sql 他可以结合凤凰使用 但是多一个组件就意味着多一个风险
+    所以这是后可以选择一个折中的方式 kudu
+kudu
+    定位：
+        更新 查询的时候性能更快
+    概述
+        kudu集群存储的是表 可以有一个或多个主键
+
+将六个rpm文件下载到服务器
+安装命令(如果多个机器 首先要同步时间)
+[root@JD kudusoftware]# pwd
+/root/kudusoftware
+[root@JD kudusoftware]# ll
+total 360176
+-rw-r--r-- 1 root root 123256076 May 29 21:38 kudu-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+-rw-r--r-- 1 root root   4075068 May 29 21:38 kudu-client0-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+-rw-r--r-- 1 root root     56552 May 29 21:38 kudu-client-devel-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+-rw-r--r-- 1 root root 241410696 May 29 21:38 kudu-debuginfo-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+-rw-r--r-- 1 root root      5784 May 29 21:38 kudu-master-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+-rw-r--r-- 1 root root      5816 May 29 21:38 kudu-tserver-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm
+[root@JD kudusoftware]# sudo rpm -ivh --nodeps *
+warning: kudu-1.7.0+cdh5.16.2+0-1.cdh5.16.2.p0.24.el7.x86_64.rpm: Header V4 DSA/SHA1 Signature, key ID e8f86acd: NOKEY
+Preparing...                          ################################# [100%]
+Updating / installing...
+   1:kudu-1.7.0+cdh5.16.2+0-1.cdh5.16.################################# [ 17%]
+   2:kudu-client0-1.7.0+cdh5.16.2+0-1.################################# [ 33%]
+   3:kudu-client-devel-1.7.0+cdh5.16.2################################# [ 50%]
+   4:kudu-master-1.7.0+cdh5.16.2+0-1.c################################# [ 67%]
+   5:kudu-tserver-1.7.0+cdh5.16.2+0-1.################################# [ 83%]
+   6:kudu-debuginfo-1.7.0+cdh5.16.2+0-################################# [100%]
+修改配置文件    
+[root@JD kudusoftware]# cd /etc/kudu/conf
+[root@JD conf]# ll
+total 8
+-rw-r--r-- 1 root root 233 Jun  3  2019 master.gflagfile
+-rw-r--r-- 1 root root 236 Jun  3  2019 tserver.gflagfile
+[root@JD conf]# vi master.gflagfile
+#--trusted_subnets=0.0.0.0/0
+--fs_wal_dir=/data/kudu/kudu_tmaster_data
+--fs_data_dirs=/data/kudu/kudu_tmaster_data
+[root@JD conf]# vi tserver.gflagfile
+#--trusted_subnets=0.0.0.0/0
+--fs_wal_dir=/data/kudu/kudu_tserver_data
+--fs_data_dirs=/data/kudu/kudu_tserver_data
+--tserver_master_addrs=jd:7051
+建立文件夹和赋kudu权限
+[root@JD /]# chown -R kudu:kudu data/*
+master 元数据目录
+[root@JD /]# sudo mkdir -p /data/kudu/kudu_tmaster_data
+table数据目录
+[root@JD /]# sudo mkdir -p /data/kudu/kudu_tserver_data
+log 目录
+[root@JD /]# sudo mkdir -p /data/kudu/log
+
+启动/停止
+[root@JD /]# /etc/init.d/kudu-master start/stop
+[root@JD /]# /etc/init.d/kudu-tserver start/stop
+访问
+http://jd:8051/
+
+ui介绍
+    logs:内容一定要看
+    masters:描述的地址和端口
+    tables:描述kudu上有多少表
+
+
+
+
+RDD(补充):
+    找到PairRDDFunctions
+        join方法调的是cogroup
+        cogroup又调的是805行的CoGroupedRDD 这里面肯定会有一个computer方法
+        进入CoGroupedRDD类
+
+看RDD源码中aggregate方法的注释
+def aggregate[U: ClassTag]
+(zeroValue: U)  初始值   3
+(seqOp: (U, T) => U, 计算每个分区内的数据 局部操作
+combOp: (U, U) => U) 全局的
+: U = withScope {
+
+    val sc = spark.sparkContext
+    val rdd1 = sc.parallelize(1 to 5, 1)
+    def func1(a:Int, b:Int) = a * b
+    def func2(a:Int, b:Int) = a + b
+    //分区为1 结果是363 如果将分区设为3 计算结果为84 如果将分区设为2 计算结果为189
+    rdd1.aggregate(3)(func1, func2)
+
+分析：
+分区为1的分析
+分区里的值为  1 2 3 4 5
+func1操作 一开始a是初始值3 b为1
+            所以3 * 1 = 3
+            所以func1的操作为 3 * 1 * 2 * 3 * 4 * 5 = 360
+func2操作
+    3+360=363
+
+
+    val sc = spark.sparkContext
+    val rdd1 = sc.parallelize(1 to 10, 3)
+    def func1(a:Int, b:Int) = a * b
+    def func2(a:Int, b:Int) = a + b
+    //结果为10332
+    rdd1.aggregate(2)(func1, func2)
+
+分析
+分区一 1 2 3        * 2 = 12
+分区二 4 5 6        * 2 = 240
+分区三 7 8 9 10     * 2 = 10080
+func1操作
+    分区一
+        一开始a是初始值2 b为1 然后做相乘操作
+    分区二三同理
+func2操作
+    初始值2 然后各分区的值进行相加
+    2 + 12 + 240 + 10080 = 10334
+rdd1.aggregate(2)(func1, func2)
+

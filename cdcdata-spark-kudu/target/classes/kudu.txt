@@ -1,0 +1,241 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+spark读取kudu源码分析
+    DefaultSource中
+
+        64行，创建了Relation
+        67行，在参数中获取表名，没有就报错
+        70行，在参数中获取master，没有就取默认的(默认的是本地的，肯定连不上)
+        71行，获取OperationType，没有就取默认值upsert
+        76行，构建KuduRelation，构建的方式是柯里化
+        进入KuduRelation
+            157行，继成baseRelation 还可以行过滤和列裁剪 以及吧数据save写出去
+            175行，构建schema
+                如果我们自己传入schema信息，就用我们传入的
+                  得到每一个字段并调用kuduColumnToSparkField函数，185行该函数将kudu类型转换为spark类型 转换的类是335行的kuduTypeToSparkType(延伸:ds/df写数据出去，也有这样一个类型转换)
+                否则就用框架自己定的
+        写的方法
+            在319行的insert 参数df，第二个参数表示可覆盖
+            320行表示kudu不支持覆盖模式写数据
+            点击writeRows方法 进入285行
+                参数1 df 参数2写到哪张表 参数3表示操作类型
+                289行 将df数据通过foreachPartition写出去
+                290行调用writePartitionRows写数据
+                309行打开一张表
+                313行创建session 然后设置参数
+                317行 将数据遍历
+                318行 操作打开
+                321行 把数据该设置的都设置进去
+                或者对spark类型的数据进行转换成kudu类型
+            然后再回来
+            294行 如果报错 打印报错信息
+
+
+
+
+
+
+
+
+
+
+如果你想要通过Spark去读取ext存储的数据
+mapping：两个不同框架之间的FieldSchema(字段类型)是对等的，所以要进行对应转换
+	KUDU: INT32  INT64
+	Spark: ????
+kudu转spark类型
+	ColumnSchema ==> StructField
+
+别管采用什么技术，你得保证相同业务的处理结果是一样的
+	HDFS  Kudu...
+
+jar运行在YARN(运行jar的参数不能乱用 以内有一些参数只适用于固定模式)
+./bin/spark-submit --class org.apache.spark.examples.SparkPi \
+--master yarn \
+--deploy-mode cluster \
+--driver-memory 4g \
+--executor-memory 2g \
+--executor-cores 5 \
+--num-executors 10 \
+--queue thequeue \
+examples/jars/spark-examples*.jar \
+10
+
+10个executors 也就是10个container(executor是跑在container上的)
+--executor-memory 2g \
+--executor-cores 5 \
+表示每一个executors有2g内存和5个core
+同一时间点跑的task数量(并行)core*executor = 5*10 = 50个task
+如果总共100tasks  该任务需要跑2轮
+增加
+NM
+问题：10个executors都跑在一个NM上了，因为一个executors并不一定会被分配到一个NM上，如何解决
+思路：尽可能让executor跑在尽可能多的NM  增大executor 减小core 并行度还是一样的，资源也是一样的，这么做是为了尽可能的打散executor
+补充：在spark中task数量跟partition数量是一样的
+
+
+spark调优就是调这三个参数，对作业的影响
+--executor-memory 2g \
+--executor-cores 5 \
+--num-executors 10 \
+executors cores 影响并行度
+memory 增大 能提高reduce map读的大小 落地的数据就少
+
+
+
+
+aggregateByKey是transformation还是action算子? 在PairRDDFunctions.scala中
+
+aggregate与aggregateByKey差别
+aggregate的初始值既作用在分区中的计算 也作用在全局的操作
+aggregateByKey的初始值只作用在分区中的计算 不作用在全局的计算
+aggregate是transformation还是action算子? 在RDD.scala中
+
+聚合每个key的value 使用给定的聚合函数然后会有一个初始值
+def aggregateByKey[U: ClassTag]
+(zeroValue: U)
+(seqOp: (U, V) => U, <===zero
+combOp: (U, U) => U) 	X
+
+
+求分区内key对应的最大值，然后求和
+rdd.aggregateByKey(0)(math.max(_,_),_+_)
+第一步 分区比较求出不同key的最大值
+("a",3),("a",2),("c",4),第一个分区的值
+	分区比较
+	a:
+		max(0,3) ==> 3 初始值0 跟进来的key为a的第一个value进行比较最大值 结果是3
+		max(3,2) ==> 3 上一次计算的最大值3跟key为a的第二个value值进行比较最大值 结果为3
+	c:
+		max(0,4) ==> 4 初始值0 跟进来的key为c的第一个value进行比较最大值 结果是4 因为只有一个值 所以比较一次就完事了
+
+("b",3),("c",6),("c",8) 第二个分区的值
+	比较方式跟分区一是一样的
+	b: 3 结果3
+	c: 8 结果8
+
+第二步 分区间最大值相加
+a只有分区一有 所以和为 a:3
+b只有分区二有 所以和为 b:3
+c分区一和翻去二都有 所以和为 c:4+8=12
+最终结果Array(("a",3),("b",3),("c",12))
+
+案例二 把初始值换为10
+rdd.aggregateByKey(10)(math.max(_,_),_+_)
+
+第一步 分区比较求出不同key的最大值
+("a",3),("a",2),("c",4),第一个分区的值
+	分区比较
+	a:
+		max(10,3) ==> 10 初始值10 跟进来的key为a的第一个value进行比较最大值 结果是10
+		max(10,2) ==> 10 上一次计算的最大值10跟key为a的第二个value值进行比较最大值 结果为10
+	c:
+		max(10,4) ==> 10 初始值10 跟进来的key为c的第一个value进行比较最大值 结果是10 因为只有一个值 所以比较一次就完事了
+
+("b",3),("c",6),("c",8) 第二个分区的值
+	比较方式跟分区一是一样的
+	b: 10 结果10
+	c: 10 结果10
+
+第二步 分区间最大值相加
+a只有分区一有 所以和为 a:10
+b只有分区二有 所以和为 b:10
+c分区一和翻去二都有 所以和为 c:10+10=20
+最终结果Array(("a",10),("b",10),("c",20))
+
+
+foldByKey是aggregateByKey的简化版
+这两个算子最终都是调用combineByKeyWithClassTag这个算子
+def foldByKey
+(zeroValue: V)
+(func: (V, V) => V): RDD[(K, V)]
+
+
+
+
+xxxbyKey算子最底层实现源码分析
+    看一下498行的groupByKey 不太明白  明天屡屡
+    其实底层都是调的combineByKeyWithClassTag这个算子
+    combineByKeyWithClassTag 这就是个老祖宗
+
+首先combineByKey分析 底层调的是combineByKeyWithClassTag这个算子
+  def combineByKey[C](
+      createCombiner: V => C,确定聚合值的类型 可以是初始值/累加值
+      mergeValue: (C, V) => C,分区内聚合
+      mergeCombiners: (C, C) => C,全局聚合
+      partitioner: Partitioner,分区
+      mapSideCombine: Boolean = true,map端聚合
+      serializer: Serializer = null)
+
+分析
+    val rdd2 = sc.parallelize(List((1,3),(1,2),(1,4),(2,3),(3,8),(3,6)), 3)
+    rdd2.combineByKey(
+      x => x, //func1 表示value进来的值  进来什么就出去什么
+      (a:Int,b:Int) =>a+b, //func2 分区内聚合 表示两两相加
+      (x:Int,y:Int) => x+y //func3  全局聚合(把key相同的丢到一块去 然后聚合计算)  两两相加
+    ).collect()
+有三个分区
+0分区 (1,3),(1,4)
+    fun1的结果
+        1:3
+        1:4
+    fun2的结果
+        1:7
+1分区 (1,2),(2,3)
+    fun1的结果
+        1:2
+        2:3
+    fun2的结果
+        1:2
+        2；3
+2分区 (3,6),(3,8)
+    fun1的结果
+        3:6
+        3:8
+    fun2的结果
+        3:14
+所以fun3的结果就是最终的结果
+    Array((3,14),(1,9),(2,3))
+
+  def combineByKey[C](
+      createCombiner: V => C,  C的类型跟下面几个C的类型必须一样 也就是类型一定要注意
+      mergeValue: (C, V) => C,
+      mergeCombiners: (C, C) => C)
+
+
+    val rdd3 = sc.parallelize(List(("a",88),("b",95),("a",91),("b",93),("a",95),("b",98)), 2)
+    //求平均数
+    // (_,1)的作用是计数功能 比如进来的值88 出去的值(88,1) 95=>(95,1)
+    //查看combineByKey函数 类型要对应上 比如说C的类型都必须是一样的
+    rdd3.combineByKey(
+      (_,1),//表示计数功能 进来一个数给他赋个1
+      (a:(Int,Int),b) => (a._1+b,a._2+1), a的类型必须要跟上面的类型一样 该方法表示分区的value值相加 还有每次计数都加个1
+      (x:(Int,Int),y:(Int,Int)) => (x._1+y._1,x._2+y._2) 表示值全局key相同的value值相加和技术的值相加 组成一个tuple
+    ).map{//使用map算子进行求平均数
+      case (k,v) => (k,v._1/v._2.toDouble)
+    }.collect()
+
+
+
+
+
+
+
+
+
+
+
+

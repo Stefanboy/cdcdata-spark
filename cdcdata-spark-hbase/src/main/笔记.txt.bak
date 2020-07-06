@@ -1,0 +1,72 @@
+Topic: Spark对接HBase的数据
+
+
+如果访问hbase数据：cf:column
+	o:name 30
+	o:age pk
+	o:sex m
+
+在spark中操作
+select name,age,sex from xxx
+
+mapping
+
+想使用Spark EXT去访问HBase：
+	phoenix 适用于单表 像group by join这种不适合
+
+
+val df = spark.read.format("com.ruozedata.spark.source.hbase")
+.option("hbase.table.name","users")
+.option("spark.table.schema","(age int, name string, sex string)")
+.load()
+
+解决hbase跟spark冲突
+
+sparksql做了哪些优化
+
+
+
+
+
+shuffle
+    groupByKey reduceByKey countByKey join
+    遇到宽依赖就会有shuffle的产生 就会切出新的stage
+    有shuffle就有可能会有数据倾斜的产生：相同key的数据会分发到同一个task中去执行
+Spark发展到现在，经历过集中类型的shuffle（在源码SparkEnv.scala第341行有）
+    hash：HashShuffleManager(现在已经没有了)：1.2版本之前
+    sort：SortShuffleManager：1.2版本之后
+    tungsten sort：SortShuffleManager：1.2版本之后
+
+调优：应该从代码、资源、数据倾斜、shuffle进行调优
+
+举例：
+    总共1个executor 有2个core 还有4个maptask和2个reducetask
+    所以 并行度是2 即同一时间点执行执行2个task 所以maptask需要执行2轮
+
+HashShuffleManager
+  假如maptask数量m reducetask数量r
+    每一个map task要为每个reduce task创建‘东西’
+    这个东西指的是 内存(bucket) file
+产生的问题
+    1）产生过多的file：数量是m*r数量
+      Spark job的maptask和reducetask的个数都是比较多的，所以中间产生的磁盘文件数量是非常惊人的
+    2）耗费过多的内存空间
+      每个maptask需要开启r个bucket 会产生m*r个bucket 每一个使用完会释放 但是同时存在的bucket的数量非常多是r*core
+    bucket大小：spark.shuffle.file.buffer 默认32k
+
+HashShuffleManager优化
+    map端输出文件合并
+
+
+
+
+
+
+
+
+
+
+
+
+
+
