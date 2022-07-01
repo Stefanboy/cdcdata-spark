@@ -27,7 +27,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <scala.version>2.12.10</scala.version>
-        <hadoop.version>2.6.0-cdh5.16.2</hadoop.version>
+        <hadoop.version>2.7.0</hadoop.version>
         <scala.tools.verson>2.12</scala.tools.verson>
         <spark.version>2.4.5</spark.version>
         <mysql.version>5.1.28</mysql.version>
